@@ -64,18 +64,3 @@ def decode_access_token(token: str):
         return payload
     except JWTError:
         return None
-
-
-# Global Static Key for encrypting server-side "web contents"
-# THIS MUST MATCH THE KEY IN THE ANDROID APP
-GLOBAL_STATIC_KEY = b"rick_master_key_32_chars_long_!!"
-
-
-def encrypt_global_content(plaintext: str) -> dict:
-    aesgcm = AESGCM(GLOBAL_STATIC_KEY)
-    nonce = os.urandom(12)
-    ciphertext = aesgcm.encrypt(nonce, plaintext.encode("utf-8"), None)
-    return {
-        "ciphertext": base64.b64encode(ciphertext).decode("utf-8"),
-        "nonce": base64.b64encode(nonce).decode("utf-8")
-    }

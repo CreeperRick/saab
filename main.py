@@ -32,7 +32,12 @@ from websocket_manager import manager
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app = FastAPI(title="Encrypted DM Server")
+app = FastAPI(
+    title="Encrypted DM Server",
+    docs_url=None,      # Disable Swagger UI
+    redoc_url=None,     # Disable ReDoc
+    openapi_url=None    # Disable OpenAPI JSON
+)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 models.init_db()
@@ -126,11 +131,6 @@ class GrantKeyRequest(BaseModel):
     recipient_username: str
     channel_id: int
     encrypted_key: str
-    nonce: str
-
-
-class EncryptedGlobalResponse(BaseModel):
-    ciphertext: str
     nonce: str
 
 
@@ -597,21 +597,23 @@ async def websocket_endpoint(
         manager.disconnect(user_id)
 
 
+@app.get("/")
+def get_root_blank():
+    # SAFETY: Return a completely blank response to any browser visit.
+    # No JSON, no text, no metadata.
+    from fastapi.responses import Response
+    return Response(content=None, status_code=200, media_type="text/plain")
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    # Minimal health check - no JSON
+    from fastapi.responses import Response
+    return Response(content="ok", status_code=200, media_type="text/plain")
 
-
-@app.get("/", response_model=EncryptedGlobalResponse)
-def get_root_encrypted():
-    # This encrypts a secret message that only the app can read.
-    # You can put any server info or "web content" here.
-    secret_text = "Welcome to Rick's Private Server. Secure connection established."
-    return crypto_utils.encrypt_global_content(secret_text)
-
-
-@app.get("/secret-info", response_model=EncryptedGlobalResponse)
-def get_secret_info(current_user=Depends(get_current_user)):
-    # Authenticated secret info
-    secret_text = "The master admin password for the backend is: none-of-your-business-123"
-    return crypto_utils.encrypt_global_content(secret_text)
+@app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def catch_all(path_name: str):
+    # SAFETY: Return blank for any unknown URL.
+    # This prevents an attacker from guessing API endpoints via 404/200 differences.
+    from fastapi.responses import Response
+    return Response(content=None, status_code=200, media_type="text/plain")
