@@ -128,6 +128,11 @@ class GrantKeyRequest(BaseModel):
     nonce: str
 
 
+class EncryptedGlobalResponse(BaseModel):
+    ciphertext: str
+    nonce: str
+
+
 # ---------- Auth dependency ----------
 
 def verify_cloudflare_access(
@@ -589,3 +594,18 @@ async def websocket_endpoint(
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/", response_model=EncryptedGlobalResponse)
+def get_root_encrypted():
+    # This encrypts a secret message that only the app can read.
+    # You can put any server info or "web content" here.
+    secret_text = "Welcome to Rick's Private Server. Secure connection established."
+    return crypto_utils.encrypt_global_content(secret_text)
+
+
+@app.get("/secret-info", response_model=EncryptedGlobalResponse)
+def get_secret_info(current_user=Depends(get_current_user)):
+    # Authenticated secret info
+    secret_text = "The master admin password for the backend is: none-of-your-business-123"
+    return crypto_utils.encrypt_global_content(secret_text)
