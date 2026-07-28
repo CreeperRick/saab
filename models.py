@@ -171,40 +171,22 @@ def list_users(exclude_username: str = None):
 # ---------- Messages ----------
 
 def save_message(sender_id: int, recipient_id: int, ciphertext: str, nonce: str, sender_ephemeral_pub: str = None):
-    with db_cursor() as cur:
-        cur.execute(
-            """INSERT INTO messages
-               (sender_id, recipient_id, ciphertext, nonce, sender_ephemeral_pub, created_at, delivered)
-               VALUES (?, ?, ?, ?, ?, ?, 0)""",
-            (sender_id, recipient_id, ciphertext, nonce, sender_ephemeral_pub, time.time()),
-        )
-        return cur.lastrowid
+    # SAFETY: "Unhackable" mode - we never save messages to the database.
+    return 0
 
 
 def mark_delivered(message_id: int):
-    with db_cursor() as cur:
-        cur.execute("UPDATE messages SET delivered = 1 WHERE id = ?", (message_id,))
+    pass
 
 
 def get_conversation(user_a_id: int, user_b_id: int, limit: int = 200):
-    with db_cursor() as cur:
-        cur.execute(
-            """SELECT * FROM messages
-               WHERE (sender_id = ? AND recipient_id = ?)
-                  OR (sender_id = ? AND recipient_id = ?)
-               ORDER BY created_at ASC LIMIT ?""",
-            (user_a_id, user_b_id, user_b_id, user_a_id, limit),
-        )
-        return [dict(r) for r in cur.fetchall()]
+    # SAFETY: No history stored on server.
+    return []
 
 
 def get_undelivered_for_user(user_id: int):
-    with db_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM messages WHERE recipient_id = ? AND delivered = 0 ORDER BY created_at ASC",
-            (user_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]
+    # SAFETY: Messages are live-only.
+    return []
 
 
 # ---------- Servers ----------
@@ -336,49 +318,28 @@ def increment_invite_uses(code: str):
 # ---------- Channel messages ----------
 
 def save_channel_message(channel_id: int, sender_id: int, ciphertext: str, nonce: str):
-    with db_cursor() as cur:
-        cur.execute(
-            """INSERT INTO channel_messages (channel_id, sender_id, ciphertext, nonce, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (channel_id, sender_id, ciphertext, nonce, time.time()),
-        )
-        return cur.lastrowid
+    # SAFETY: No persistence for channel messages.
+    return 0
 
 
 def get_channel_messages(channel_id: int, limit: int = 200):
-    with db_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM channel_messages WHERE channel_id = ? ORDER BY created_at ASC LIMIT ?",
-            (channel_id, limit),
-        )
-        return [dict(r) for r in cur.fetchall()]
+    # SAFETY: No channel history.
+    return []
 
 
 # ---------- Key grants ----------
 
 def create_key_grant(channel_id: int, recipient_id: int, granter_id: int, encrypted_key: str, nonce: str):
-    with db_cursor() as cur:
-        cur.execute(
-            """INSERT INTO key_grants
-               (channel_id, recipient_id, granter_id, encrypted_key, nonce, delivered, created_at)
-               VALUES (?, ?, ?, ?, ?, 0, ?)""",
-            (channel_id, recipient_id, granter_id, encrypted_key, nonce, time.time()),
-        )
-        return cur.lastrowid
+    # SAFETY: Key grants are live-only.
+    return 0
 
 
 def mark_key_grant_delivered(grant_id: int):
-    with db_cursor() as cur:
-        cur.execute("UPDATE key_grants SET delivered = 1 WHERE id = ?", (grant_id,))
+    pass
 
 
 def get_undelivered_key_grants(recipient_id: int):
-    with db_cursor() as cur:
-        cur.execute(
-            "SELECT * FROM key_grants WHERE recipient_id = ? AND delivered = 0 ORDER BY created_at ASC",
-            (recipient_id,),
-        )
-        return [dict(r) for r in cur.fetchall()]
+    return []
 
 
 def has_pending_or_delivered_key_grant(channel_id: int, recipient_id: int) -> bool:

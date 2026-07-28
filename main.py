@@ -50,6 +50,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+    server_password: str # Required for login too for extra safety
 
 
 class AuthResponse(BaseModel):
@@ -187,6 +188,10 @@ def register(req: RegisterRequest, _ = Depends(verify_cloudflare_access)):
 
 @app.post("/login", response_model=AuthResponse)
 def login(req: LoginRequest, _ = Depends(verify_cloudflare_access)):
+    # SAFETY: Check global server password
+    if req.server_password != "rick123":
+        raise HTTPException(403, "Invalid server password")
+
     user = models.get_user_by_username(req.username)
     if user is None or not crypto_utils.verify_password(req.password, user["password_hash"]):
         raise HTTPException(401, "Invalid username or password")
@@ -198,8 +203,9 @@ def login(req: LoginRequest, _ = Depends(verify_cloudflare_access)):
 
 @app.get("/users", response_model=list[UserSummary])
 def list_users(current_user=Depends(get_current_user)):
-    users = models.list_users(exclude_username=current_user["username"])
-    return [UserSummary(id=u["id"], username=u["username"]) for u in users]
+    # SAFETY: Discovery is disabled to prevent user enumeration.
+    # You must know the exact username to start a chat.
+    return []
 
 
 @app.get("/users/{username}/public_key", response_model=PublicKeyResponse)
