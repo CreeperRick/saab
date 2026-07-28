@@ -44,6 +44,7 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=32, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(min_length=8, max_length=256)
     public_key: str  # base64-encoded X25519 public key
+    server_password: str # Required to prevent random people from registering
 
 
 class LoginRequest(BaseModel):
@@ -129,7 +130,27 @@ class GrantKeyRequest(BaseModel):
 
 # ---------- Auth dependency ----------
 
-def get_current_user(authorization: str = Header(...)):
+def verify_cloudflare_access(
+    cf_access_client_id: Optional[str] = Header(None, alias="CF-Access-Client-Id"),
+    cf_access_client_secret: Optional[str] = Header(None, alias="CF-Access-Client-Secret")
+):
+    """
+    Optional: Strict Cloudflare Access verification.
+    If you set CF_CLIENT_ID and CF_CLIENT_SECRET environment variables,
+    the server will require these headers on every request.
+    """
+    required_id = os.getenv("CF_CLIENT_ID")
+    required_secret = os.getenv("CF_CLIENT_SECRET")
+
+    if required_id and required_secret:
+        if cf_access_client_id != required_id or cf_access_client_secret != required_secret:
+            raise HTTPException(403, "Invalid Cloudflare Access credentials")
+
+
+def get_current_user(
+    authorization: str = Header(...),
+    _ = Depends(verify_cloudflare_access) # Ensure CF Access headers are valid if configured
+):
     if not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing bearer token")
     token = authorization.removeprefix("Bearer ").strip()
@@ -145,7 +166,12 @@ def get_current_user(authorization: str = Header(...)):
 # ---------- Auth routes ----------
 
 @app.post("/register", response_model=AuthResponse)
-def register(req: RegisterRequest):
+def register(req: RegisterRequest, _ = Depends(verify_cloudflare_access)):
+    # SAFETY: Check global server password
+    # You can change this password here:
+    if req.server_password != "rick123":
+        raise HTTPException(403, "Invalid server password")
+
     if models.get_user_by_username(req.username):
         raise HTTPException(400, "Username already taken")
     pw_hash = crypto_utils.hash_password(req.password)
@@ -155,7 +181,7 @@ def register(req: RegisterRequest):
 
 
 @app.post("/login", response_model=AuthResponse)
-def login(req: LoginRequest):
+def login(req: LoginRequest, _ = Depends(verify_cloudflare_access)):
     user = models.get_user_by_username(req.username)
     if user is None or not crypto_utils.verify_password(req.password, user["password_hash"]):
         raise HTTPException(401, "Invalid username or password")
@@ -393,7 +419,20 @@ async def grant_channel_key(channel_id: int, req: GrantKeyRequest, current_user=
 # ---------- WebSocket: live delivery ----------
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    token: str,
+    cf_access_client_id: Optional[str] = Header(None, alias="CF-Access-Client-Id"),
+    cf_access_client_secret: Optional[str] = Header(None, alias="CF-Access-Client-Secret")
+):
+    # Verify Cloudflare Access headers if configured
+    required_id = os.getenv("CF_CLIENT_ID")
+    required_secret = os.getenv("CF_CLIENT_SECRET")
+    if required_id and required_secret:
+        if cf_access_client_id != required_id or cf_access_client_secret != required_secret:
+            await websocket.close(code=4403) # Forbidden
+            return
+
     payload = crypto_utils.decode_access_token(token)
     if payload is None:
         await websocket.close(code=4401)
